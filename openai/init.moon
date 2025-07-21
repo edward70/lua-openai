@@ -219,12 +219,10 @@ class ChatSession
     out.response or out.message
 
 class OpenAI
-  api_base: "https://api.openai.com/v1"
-
   -- config: types.shape {
   --   http_provider: types.string\describe("HTTP module name used for requests") + types nil
   -- }
-  new: (@api_key, config) =>
+  new: (@api_key, config, @api_base="https://api.openai.com/v1") =>
     @config = {}
 
     if type(config) == "table"
