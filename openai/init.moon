@@ -21,9 +21,9 @@ content_format = types.string + types.array_of types.one_of {
 test_message = types.one_of {
   types.partial {
     role: types.one_of {"system", "user", "assistant"}
-    content: empty + content_format -- this can be empty when function_call is set
+    content: empty + content_format -- this can be empty when tool_call is set
     name: empty + types.string
-    function_call: empty + types.table
+    tool_call: empty + types.table
   }
 
   -- this message type is for sending a function call response back
@@ -51,7 +51,7 @@ parse_chat_response = types.partial {
         types.partial({
           role: "assistant"
           content: types.string + empty
-          function_call: types.partial {
+          tool_call: types.partial {
             name: types.string
             -- API returns arguments a string that should be in json format
             arguments: types.string
@@ -134,11 +134,11 @@ class ChatSession
     if type(@opts.messages) == "table"
       @append_message unpack @opts.messages
 
-    if type(@opts.functions) == "table"
-      @functions = {}
-      for func in *@opts.functions
+    if type(@opts.tools) == "table"
+      @tools = {}
+      for func in *@opts.tools
         assert test_function func
-        table.insert @functions, func
+        table.insert @tools, func
 
   append_message: (m, ...) =>
     assert test_message m
@@ -166,8 +166,8 @@ class ChatSession
   -- stream_callback: provide a function to enable streaming output. function will receive each chunk as it's generated
   generate_response: (append_response=true, stream_callback=nil) =>
     status, response = @client\chat @messages, {
-      function_call: @opts.function_call -- override the default function call behavior
-      functions: @functions
+      tool_call: @opts.tool_call -- override the default tool call behavior
+      tools: @tools
       model: @opts.model
       temperature: @opts.temperature
       stream: stream_callback and true or nil
@@ -215,14 +215,14 @@ class ChatSession
     if append_response
       @append_message out.message
 
-    -- response is missing for function_calls, so we return the entire message object
+    -- response is missing for tool_calls, so we return the entire message object
     out.response or out.message
 
 class OpenAI
   -- config: types.shape {
   --   http_provider: types.string\describe("HTTP module name used for requests") + types nil
   -- }
-  new: (@api_key, config, @api_base="https://api.openai.com/v1") =>
+  new: (@api_key, @api_base="https://api.openai.com/v1", config) =>
     @config = {}
 
     if type(config) == "table"
