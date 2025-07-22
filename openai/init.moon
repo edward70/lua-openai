@@ -52,6 +52,9 @@ parse_chat_response = types.partial {
           role: "assistant"
           content: types.string + empty
           tool_call: types.partial {
+            type: types.string
+            id: types.string
+            call_id: types.string
             name: types.string
             -- API returns arguments a string that should be in json format
             arguments: types.string
