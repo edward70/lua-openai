@@ -1,6 +1,6 @@
 # lua-openai
 
-OpenAI compatible API for Lua. Uses `luasocket` or [`lapis.nginx.http`](https://leafo.net/lapis/reference/utilities.html#making-http-requests) for OpenResty, which requires adding a `proxy_pass` to the Nginx config:
+OpenAI compatible API for Lua. Uses `luasocket` for normal lua installations or [`lapis.nginx.http`](https://leafo.net/lapis/reference/utilities.html#making-http-requests) for OpenResty, which requires adding a `proxy_pass` to the Nginx config:
 
 ```
 location /proxy {
