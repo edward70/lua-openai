@@ -1,15 +1,15 @@
-package = "lua-openai"
+package = "lua-llm"
 version = "dev-1"
 source = {
-   url = "git+ssh://git@github.com/leafo/lua-openai.git"
+   url = "git+ssh://git@github.com/edward70/lua-llm.git"
 }
 description = {
-   summary = "Bindings to the OpenAI HTTP API for Lua.",
+   summary = "OpenAI compatible API for Lua.",
    detailed = [[
-Bindings to the OpenAI HTTP API for Lua. Compatible with any socket library
+OpenAI compatible API for Lua. Compatible with any socket library
 that supports the LuaSocket request interface. Compatible with OpenResty using
 [`lapis.nginx.http`](https://leafo.net/lapis/reference/utilities.html#making-http-requests).]],
-   homepage = "https://github.com/leafo/lua-openai",
+   homepage = "https://github.com/edward70/lua-llm",
    license = "MIT"
 }
 dependencies = {

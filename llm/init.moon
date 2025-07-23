@@ -26,16 +26,17 @@ test_message = types.one_of {
     tool_call: empty + types.table
   }
 
-  -- this message type is for sending a function call response back
+  -- this message type is for sending a tool call response back
   types.partial {
-    role: types.one_of {"function"}
+    role: types.one_of {"tool"}
     name: types.string
     content: empty + types.string
   }
 }
 
--- verify the shape of a function declaration
-test_function = types.shape {
+-- verify the shape of a tool declaration
+test_tool = types.shape {
+  type: types.string
   name: types.string
   description: types.nil + types.string
   parameters: types.nil + types.table
@@ -46,7 +47,7 @@ parse_chat_response = types.partial {
   choices: types.partial {
     types.partial {
       message: types.one_of({
-        -- if function call is requested, content is not required so we tag
+        -- if tool call is requested, content is not required so we tag
         -- nothing so we can return the whole object
         types.partial({
           role: "assistant"
@@ -69,23 +70,6 @@ parse_chat_response = types.partial {
     }
   }
 }
-
--- {
---   "id": "chatcmpl-XXX",
---   "object": "chat.completion.chunk",
---   "created": 1682979397,
---   "model": "gpt-3.5-turbo-0301",
---   "choices": [
---     {
---       "delta": {
---         "content": " hello"
---       },
---       "index": 0,
---       "finish_reason": null
---     }
---   ]
--- }
-
 
 parse_completion_chunk = types.partial {
   object: "chat.completion.chunk"
@@ -129,7 +113,6 @@ parse_error_message = types.partial {
 }
 
 -- handles appending response for each call to chat
--- TODO: hadle appending the streaming response to the output
 class ChatSession
   new: (@client, @opts={}) =>
     @messages = {}
@@ -139,9 +122,9 @@ class ChatSession
 
     if type(@opts.tools) == "table"
       @tools = {}
-      for func in *@opts.tools
-        assert test_function func
-        table.insert @tools, func
+      for tool in *@opts.tools
+        assert test_tool tool
+        table.insert @tools, tool
 
   append_message: (m, ...) =>
     assert test_message m
@@ -169,12 +152,9 @@ class ChatSession
   -- stream_callback: provide a function to enable streaming output. function will receive each chunk as it's generated
   generate_response: (append_response=true, stream_callback=nil) =>
     status, response = @client\chat @messages, {
-      tool_call: @opts.tool_call -- override the default tool call behavior
       tools: @tools
-      model: @opts.model
-      temperature: @opts.temperature
-      stream: stream_callback and true or nil
-      response_format: @opts.response_format
+      stream: stream_callback and true or nil,
+      :opts
     }, stream_callback
 
     if status != 200
@@ -221,11 +201,8 @@ class ChatSession
     -- response is missing for tool_calls, so we return the entire message object
     out.response or out.message
 
-class OpenAI
-  -- config: types.shape {
-  --   http_provider: types.string\describe("HTTP module name used for requests") + types nil
-  -- }
-  new: (@api_key, @api_base="https://api.openai.com/v1", config) =>
+class LLM
+  new: (@api_key, @api_base, config) =>
     @config = {}
 
     if type(config) == "table"
@@ -268,7 +245,6 @@ class OpenAI
     assert test_messages messages
 
     payload = {
-      model: "gpt-3.5-turbo"
       :messages
     }
 
@@ -285,13 +261,7 @@ class OpenAI
   -- opts: additional parameters as described in https://platform.openai.com/docs/api-reference/completions
   completion: (prompt, opts) =>
     payload = {
-      model: "text-davinci-003"
       :prompt
-      temperature: 0.5
-      max_tokens: 600
-      -- top_p: 1
-      -- frequency_penalty: 0
-      -- presence_penalty: 0
     }
 
     if opts
@@ -307,7 +277,6 @@ class OpenAI
     assert input, "input must be provided"
 
     payload = {
-      model: "text-embedding-ada-002"
       :input
     }
 
@@ -332,38 +301,6 @@ class OpenAI
 
   models: =>
     @_request "GET", "/models"
-
-  files: =>
-    @_request "GET", "/files"
-
-  file: (file_id) =>
-    @_request "GET", "/files/#{file_id}"
-
-  delete_file: (file_id) =>
-    @_request "DELETE", "/files/#{file_id}"
-
-  assistants: =>
-    @_request "GET", "/assistants", nil, {
-      "OpenAI-Beta": "assistants=v1"
-    }
-
-  threads: =>
-    @_request "GET", "/threads", nil, {
-      "OpenAI-Beta": "assistants=v1"
-    }
-
-  thread_messages: (thread_id) =>
-    @_request "GET", "/threads/#{thread_id}/messages", {
-      "OpenAI-Beta": "assistants=v1"
-    }
-
-  delete_thread: (thread_id) =>
-    @_request "DELETE", "/threads/#{thread_id}", nil, {
-      "OpenAI-Beta": "assistants=v1"
-    }
-
-  image_generation: (params) =>
-    @_request "POST", "/images/generations", params
 
   _request: (method, path, payload, more_headers, stream_fn) =>
     assert path, "missing path"
@@ -420,4 +357,4 @@ class OpenAI
 
     require @config.http_provider
 
-{:OpenAI, :ChatSession, :VERSION, new: OpenAI}
+{:LLM, :ChatSession, :VERSION, new: LLM}

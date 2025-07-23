@@ -1,4 +1,4 @@
-# lua-openai
+# lua-llm
 
 OpenAI compatible API for Lua. Uses `luasocket` for normal lua installations or [`lapis.nginx.http`](https://leafo.net/lapis/reference/utilities.html#making-http-requests) for OpenResty, which requires adding a `proxy_pass` to the Nginx config:
 
@@ -32,7 +32,7 @@ location /proxy {
 Install using LuaRocks:
 
 ```bash
-luarocks install lua-openai
+luarocks install lua-llm
 ```
 
 ## Quick Usage
@@ -40,8 +40,8 @@ luarocks install lua-openai
 Here we use openrouter but you can use any OpenAI compatible API endpoint.
 
 ```lua
-local openai = require("openai")
-local client = openai.new(os.getenv("OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
+local llm = require("llm")
+local client = llm.new(os.getenv("OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 
 local status, response = client:chat({
   {role = "system", content = "You are a Lua programmer"},
@@ -60,8 +60,8 @@ end
 ## Chat Session Example
 
 ```lua
-local openai = require("openai")
-local client = openai.new(os.getenv("OPENAI_API_KEY"), "https://openrouter.ai/api/v1")
+local llm = require("llm")
+local client = llm.new(os.getenv("OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 
 local chat = client:new_chat_session({
   -- provide an initial set of messages
@@ -94,7 +94,7 @@ end)
 ## Chat Session Tool Calling
 
 ```lua
-local chat = openai:new_chat_session({
+local chat = llm:new_chat_session({
   model = "openai/gpt-3.5-turbo",
   tools = {
     {
@@ -122,6 +122,9 @@ local res = chat:send("Using the provided function, calculate the sum of 2923 + 
 
 if type(res) == "table" and res.tool_call then
   -- The tool_call object has the following fields:
+  --   tool_call.type --> "function" or some other tool
+  --   tool_call.id
+  --   tool_call.call_id
   --   tool_call.name --> name of function to be called
   --   tool_call.arguments --> A string in JSON format that should match the parameter specification
   -- Note that res may also include a content field if the LLM produced a textual output as well
@@ -171,13 +174,15 @@ some time. The streaming API can be used to read the output one chunk at a
 time, allowing you to display content in real time as it is generated.
 
 ```lua
-local openai = require("openai")
-local client = openai.new(os.getenv("OPENAI_API_KEY"))
+local llm = require("llm")
+local client = openai.new(os.getenv("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"))
 
 client:chat({
   {role = "system", content = "You work for Streak.Club, a website to track daily creative habits"},
   {role = "user", content = "Who do you work for?"}
 }, {
+  model = "openai/gpt-3.5-turbo",
+  temperature = 0.5,
   stream = true
 }, function(chunk)
   io.stdout:write(chunk.content)
@@ -189,29 +194,30 @@ print() -- print a newline
 
 ## Documentation
 
-The `openai` module returns a table with the following fields:
+The `llm` module returns a table with the following fields:
 
-- `OpenAI`: A client for sending requests to the OpenAI API.
-- `new`: An alias to `OpenAI` to create a new instance of the OpenAI client
-- `ChatSession`: A class for managing chat sessions and history with the OpenAI API.
+- `LLM`: A client for sending requests to an OpenAI compatible API.
+- `new`: An alias to `LLM` to create a new instance of an OpenAI compatible client.
+- `ChatSession`: A class for managing chat sessions and history with the OpenAI compatible API.
 - `VERSION = "1.1.0"`: The current version of the library
 
 ### Classes
 
-#### OpenAI
+#### LLM
 
 This class initializes a new OpenAI API client.
 
-##### `new(api_key, config)`
+##### `new(api_key, api_base, config)`
 
-Constructor for the OpenAI client.
+Constructor for the OpenAI compatible client.
 
-- `api_key`: Your OpenAI API key.
+- `api_key`: Your API key.
+- `api_base`: API base url
 - `config`: An optional table of configuration options, with the following shape:
   - `http_provider`: A string specifying the HTTP module name used for requests, or `nil`. If not provided, the library will automatically use "lapis.nginx.http" in an ngx environment, or "ssl.https" otherwise.
 
 ```lua
-local openai = require("openai")
+local openai = require("llm")
 local api_key = "your-api-key"
 local client = openai.new(api_key)
 ```
@@ -256,7 +262,7 @@ will be decoded from JSON if possible, otherwise the raw string is returned.
 
 #### ChatSession
 
-This class manages chat sessions and history with the OpenAI API. Typically
+This class manages chat sessions and history with the OpenAI compatible API. Typically
 created with `new_chat_session`
 
 The field `messages` stores an array of chat messages representing the chat
@@ -264,7 +270,6 @@ history. Each message object must conform to the following structure:
 
 - `role`: A string representing the role of the message sender. It must be one of the following values: "system", "user", or "assistant".
 - `content`: A string containing the content of the message.
-- `name`: An optional string representing the name of the message sender. If not provided, it should be `nil`.
 
 For example, a valid message object might look like this:
 
@@ -272,7 +277,6 @@ For example, a valid message object might look like this:
 {
   role = "user",
   content = "Tell me a joke",
-  name = "John Doe"
 }
 ```
 
@@ -280,12 +284,13 @@ For example, a valid message object might look like this:
 
 Constructor for the ChatSession.
 
-- `client`: An instance of the OpenAI client.
+- `client`: An instance of the OpenAI compatible client.
 - `opts`: An optional table of options.
   - `messages`: An initial array of chat messages
   - `functions`: A list of function declarations
   - `temperature`: temperature setting
   - `model`: Which chat completion model to use, eg. `gpt-4`, `gpt-3.5-turbo`
+  - Other options such as `top_p`, `max_output_tokens`, etc.
 
 ##### `chat:append_message(m, ...)`
 
@@ -303,9 +308,9 @@ Appends a message to the chat history and triggers a completion with
 `generate_response` and returns the response as a string. On failure, returns
 `nil`, an error message, and the raw request response.
 
-If the response includes a `function_call`, then the entire message object is
+If the response includes a `tool_call`, then the entire message object is
 returned instead of a string of the content. You can return the result of the
-function by passing `role = "function"` object to the `send` method
+function by passing `role = "tool"` object to the `send` method
 
 - `message`: A message object or a string.
 - `stream_callback`: (optional) A function to enable streaming output.
@@ -327,7 +332,7 @@ For example, a chunk might look like this:
 
 ##### `chat:generate_response(append_response, stream_callback=nil)`
 
-Calls the OpenAI API to generate the next response for the stored chat history.
+Calls the OpenAI compatible API to generate the next response for the stored chat history.
 Returns the response as a string. On failure, returns `nil`, an error message,
 and the raw request response.
 

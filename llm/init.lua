@@ -27,17 +27,18 @@ local test_message = types.one_of({
     }),
     content = empty + content_format,
     name = empty + types.string,
-    function_call = empty + types.table
+    tool_call = empty + types.table
   }),
   types.partial({
     role = types.one_of({
-      "function"
+      "tool"
     }),
     name = types.string,
     content = empty + types.string
   })
 })
-local test_function = types.shape({
+local test_tool = types.shape({
+  type = types.string,
   name = types.string,
   description = types["nil"] + types.string,
   parameters = types["nil"] + types.table
@@ -50,7 +51,10 @@ local parse_chat_response = types.partial({
         types.partial({
           role = "assistant",
           content = types.string + empty,
-          function_call = types.partial({
+          tool_call = types.partial({
+            type = types.string,
+            id = types.string,
+            call_id = types.string,
             name = types.string,
             arguments = types.string
           })
@@ -138,12 +142,9 @@ do
         stream_callback = nil
       end
       local status, response = self.client:chat(self.messages, {
-        function_call = self.opts.function_call,
-        functions = self.functions,
-        model = self.opts.model,
-        temperature = self.opts.temperature,
+        tools = self.tools,
         stream = stream_callback and true or nil,
-        response_format = self.opts.response_format
+        opts = opts
       }, stream_callback)
       if status ~= 200 then
         local err_msg = "Bad status: " .. tostring(status)
@@ -198,13 +199,13 @@ do
       if type(self.opts.messages) == "table" then
         self:append_message(unpack(self.opts.messages))
       end
-      if type(self.opts.functions) == "table" then
-        self.functions = { }
-        local _list_0 = self.opts.functions
+      if type(self.opts.tools) == "table" then
+        self.tools = { }
+        local _list_0 = self.opts.tools
         for _index_0 = 1, #_list_0 do
-          local func = _list_0[_index_0]
-          assert(test_function(func))
-          table.insert(self.functions, func)
+          local tool = _list_0[_index_0]
+          assert(test_tool(tool))
+          table.insert(self.tools, tool)
         end
       end
     end,
@@ -221,11 +222,10 @@ do
   _base_0.__class = _class_0
   ChatSession = _class_0
 end
-local OpenAI
+local LLM
 do
   local _class_0
   local _base_0 = {
-    api_base = "https://api.openai.com/v1",
     new_chat_session = function(self, ...)
       return ChatSession(self, ...)
     end,
@@ -260,7 +260,6 @@ do
       local test_messages = types.array_of(test_message)
       assert(test_messages(messages))
       local payload = {
-        model = "gpt-3.5-turbo",
         messages = messages
       }
       if opts then
@@ -276,10 +275,7 @@ do
     end,
     completion = function(self, prompt, opts)
       local payload = {
-        model = "text-davinci-003",
-        prompt = prompt,
-        temperature = 0.5,
-        max_tokens = 600
+        prompt = prompt
       }
       if opts then
         for k, v in pairs(opts) do
@@ -291,7 +287,6 @@ do
     embedding = function(self, input, opts)
       assert(input, "input must be provided")
       local payload = {
-        model = "text-embedding-ada-002",
         input = input
       }
       if opts then
@@ -315,38 +310,6 @@ do
     end,
     models = function(self)
       return self:_request("GET", "/models")
-    end,
-    files = function(self)
-      return self:_request("GET", "/files")
-    end,
-    file = function(self, file_id)
-      return self:_request("GET", "/files/" .. tostring(file_id))
-    end,
-    delete_file = function(self, file_id)
-      return self:_request("DELETE", "/files/" .. tostring(file_id))
-    end,
-    assistants = function(self)
-      return self:_request("GET", "/assistants", nil, {
-        ["OpenAI-Beta"] = "assistants=v1"
-      })
-    end,
-    threads = function(self)
-      return self:_request("GET", "/threads", nil, {
-        ["OpenAI-Beta"] = "assistants=v1"
-      })
-    end,
-    thread_messages = function(self, thread_id)
-      return self:_request("GET", "/threads/" .. tostring(thread_id) .. "/messages", {
-        ["OpenAI-Beta"] = "assistants=v1"
-      })
-    end,
-    delete_thread = function(self, thread_id)
-      return self:_request("DELETE", "/threads/" .. tostring(thread_id), nil, {
-        ["OpenAI-Beta"] = "assistants=v1"
-      })
-    end,
-    image_generation = function(self, params)
-      return self:_request("POST", "/images/generations", params)
     end,
     _request = function(self, method, path, payload, more_headers, stream_fn)
       assert(path, "missing path")
@@ -405,8 +368,8 @@ do
   }
   _base_0.__index = _base_0
   _class_0 = setmetatable({
-    __init = function(self, api_key, config)
-      self.api_key = api_key
+    __init = function(self, api_key, api_base, config)
+      self.api_key, self.api_base = api_key, api_base
       self.config = { }
       if type(config) == "table" then
         for k, v in pairs(config) do
@@ -415,7 +378,7 @@ do
       end
     end,
     __base = _base_0,
-    __name = "OpenAI"
+    __name = "LLM"
   }, {
     __index = _base_0,
     __call = function(cls, ...)
@@ -425,11 +388,11 @@ do
     end
   })
   _base_0.__class = _class_0
-  OpenAI = _class_0
+  LLM = _class_0
 end
 return {
-  OpenAI = OpenAI,
+  LLM = LLM,
   ChatSession = ChatSession,
   VERSION = VERSION,
-  new = OpenAI
+  new = LLM
 }
